@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 
 # Load your trained model
-model = tf.keras.models.load_model("my_model.h5")
+model = tf.keras.models.load_model("my_model.h5", compile=False)
 
 st.title("EV Battery Mean Voltage Predictor 🔋")
 
