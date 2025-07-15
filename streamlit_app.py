@@ -51,5 +51,7 @@ input_features = np.array([[ambient_temperature,
 # Predict and inverse scale
 if st.button("Predict Mean Voltage"):
     scaled_prediction = model.predict(input_features)[0][0]
-    original_prediction = scaled_prediction * y_scale + y_min
+    y_min = np.load("y_scaler_min.npy")
+    y_scale = np.load("y_scaler_scale.npy")
+    original_prediction = float(scaled_prediction * y_scale + y_min)
     st.success(f"🔋 Predicted Mean Voltage: **{original_prediction:.3f} V**")
