@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 
 # Load model and scalers
-model = tf.keras.models.load_model("my_model.h5")
+model = tf.keras.models.load_model("my_model.h5", compile=False)
 y_min = np.load("y_scaler_min.npy")
 y_scale = np.load("y_scaler_scale.npy")
 
