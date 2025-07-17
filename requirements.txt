@@ -4,4 +4,3 @@ numpy
 pandas
 matplotlib
 seaborn
-tensorflow==2.18.0
