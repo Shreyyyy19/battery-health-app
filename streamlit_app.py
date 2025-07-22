@@ -1,89 +1,80 @@
 import streamlit as st
-import numpy as np
 import pandas as pd
-import tensorflow as tf
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 
-# App config
-st.set_page_config(page_title="🔋 Battery Health Predictor", layout="wide")
-st.title("🔋 EV Battery Health Predictor")
+st.set_page_config(page_title="Battery Health Analyzer", layout="wide")
+st.title("🔋 EV Battery Health Analyzer")
 
-# Load model and scalers
-model = tf.keras.models.load_model("my_model.h5", compile=False)
-y_min = float(np.load("y_scaler_min.npy"))
-y_scale = float(np.load("y_scaler_scale.npy"))
+st.markdown("""
+Upload your `.csv` file containing predicted battery health data.
+The file should include at least the following columns:
 
-st.markdown("Upload a **CSV file** with battery cycle data. We'll predict mean voltage and classify battery health.")
+- `battery_id`
+- `cycle`
+- `Predicted_Mean_Voltage`
 
-uploaded_file = st.file_uploader("📂 Upload Battery Dataset (.csv)", type=["csv"])
+The app will:
+- Clean the data
+- Plot voltage vs cycle per battery
+- Classify health as Good, Warning, or Needs Replacement
+""")
+
+# --- Upload CSV ---
+uploaded_file = st.file_uploader("📂 Upload CSV File", type="csv")
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
 
-    # Required features
-    required_cols = [
-        "ambient_temperature", "mean_current", "mean_temperature",
-        "max_voltage", "min_voltage", "max_current", "min_current",
-        "mean_current_charge", "mean_voltage_charge"
-    ]
-
-    if not all(col in df.columns for col in required_cols):
-        st.error(f"Missing required columns. Expected: {', '.join(required_cols)}")
+    # --- Data Preprocessing ---
+    df = df.dropna()
+    if 'Predicted_Mean_Voltage' not in df.columns:
+        st.error("Missing column: 'Predicted_Mean_Voltage'")
         st.stop()
+        
+    df["Predicted_Mean_Voltage"] = df["Predicted_Mean_Voltage"].abs()  # fix negatives
 
-    # Drop rows with missing inputs
-    clean_df = df.dropna(subset=required_cols)
-
-    if clean_df.empty:
-        st.warning("⚠️ All rows had missing input fields. Please check your file.")
-        st.stop()
-
-    # Make predictions
-    X = clean_df[required_cols].astype(np.float32)
-    scaled_preds = model.predict(X).flatten()
-    predicted_voltage = scaled_preds * y_scale + y_min
-
-    clean_df["Predicted_Mean_Voltage"] = predicted_voltage
-
-    # Health classification
-    def classify_health(v):
-        if v >= 3.6:
+    # --- Health Classification ---
+    def classify(voltage):
+        if voltage > 3.6:
             return "Good"
-        elif v >= 3.4:
+        elif voltage > 3.4:
             return "Warning"
         else:
             return "Needs Replacement"
 
-    clean_df["Battery_Health"] = clean_df["Predicted_Mean_Voltage"].apply(classify_health)
+    df["Health_Status"] = df["Predicted_Mean_Voltage"].apply(classify)
 
-    # Color style for health column
-    def color_health(val):
-        if val == "Good":
-            return "background-color: #d4edda; color: #155724"
-        elif val == "Warning":
-            return "background-color: #fff3cd; color: #856404"
-        else:
-            return "background-color: #f8d7da; color: #721c24"
+    # --- Summary Table with Colors ---
+    st.subheader("🔍 Battery Health Table")
+    status_colors = {
+        "Good": "lightgreen",
+        "Warning": "khaki",
+        "Needs Replacement": "salmon"
+    }
 
-    st.subheader("📊 Prediction Results")
-    styled_table = clean_df.style.applymap(color_health, subset=["Battery_Health"])
-    st.dataframe(styled_table)
+    styled_df = df.style.applymap(
+        lambda val: f"background-color: {status_colors.get(val, '')}",
+        subset=["Health_Status"]
+    ).format({"Predicted_Mean_Voltage": "{:.3f}"})
 
-    st.download_button("📥 Download CSV Results", clean_df.to_csv(index=False), file_name="battery_health_results.csv")
+    st.dataframe(styled_df, use_container_width=True)
 
-    # Visualization
-    st.subheader("🔍 Visual Overview")
-    fig, ax = plt.subplots(figsize=(12, 6))
-    sns.barplot(x=clean_df.index, y="Predicted_Mean_Voltage", hue="Battery_Health", data=clean_df, dodge=False)
+    # --- Plot per Battery ---
+    st.subheader("📈 Voltage Trends by Battery")
 
-    if "battery_id" in clean_df.columns:
-        ax.set_xticks(clean_df.index)
-        ax.set_xticklabels(clean_df["battery_id"], rotation=90)
-
-    ax.axhline(3.6, ls='--', c='green', label="Good Threshold")
-    ax.axhline(3.4, ls='--', c='orange', label="Warning Threshold")
-    ax.set_ylabel("Predicted Mean Voltage (V)")
-    ax.set_title("Battery Health Classification by Cycle")
-    ax.legend()
-    st.pyplot(fig)
+    unique_batteries = df["battery_id"].unique()
+    for battery in unique_batteries:
+        sub_df = df[df["battery_id"] == battery]
+        plt.figure(figsize=(10, 4))
+        sns.lineplot(x="cycle", y="Predicted_Mean_Voltage", data=sub_df, marker="o")
+        plt.axhline(3.6, color="green", linestyle="--", label="Good Threshold (3.6V)")
+        plt.axhline(3.4, color="orange", linestyle="--", label="Warning Threshold (3.4V)")
+        plt.title(f"Battery ID: {battery}")
+        plt.xlabel("Cycle")
+        plt.ylabel("Predicted Mean Voltage (V)")
+        plt.legend()
+        st.pyplot(plt)
+        plt.close()
